@@ -1,0 +1,6 @@
+{
+  "name": "IELTS Mock Test Generator",
+  "description": "Backend test-generation engine for premium IELTS preparation.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
