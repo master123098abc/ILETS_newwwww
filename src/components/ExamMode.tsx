@@ -31,6 +31,7 @@ export function ExamMode() {
   const [micError, setMicError] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
   const currentPartRef = useRef<number>(1);
+  const sessionBaseAnswerRef = useRef<string>('');
 
   // Listening Audio specific state
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
@@ -120,6 +121,12 @@ export function ExamMode() {
   }, [currentPart, examSection]);
 
   useEffect(() => {
+    if (isRecording) {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch(e){}
+      }
+      setIsRecording(false);
+    }
     currentPartRef.current = currentPart;
   }, [currentPart]);
 
@@ -136,7 +143,7 @@ export function ExamMode() {
         let currentInterim = '';
         let finalTranscript = '';
 
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
+        for (let i = 0; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
              finalTranscript += event.results[i][0].transcript;
           } else {
@@ -144,15 +151,14 @@ export function ExamMode() {
           }
         }
         
-        if (finalTranscript) {
-           setAnswers(prev => {
-              const cp = currentPartRef.current;
-              const currentAns = prev[`part-${cp}`] || '';
-              const space = currentAns.length > 0 && !currentAns.endsWith(' ') ? ' ' : '';
-              return { ...prev, [`part-${cp}`]: currentAns + space + finalTranscript };
-           });
-        }
         setInterimTranscript(currentInterim);
+        
+        setAnswers(prev => {
+           const cp = currentPartRef.current;
+           const base = sessionBaseAnswerRef.current;
+           const space = base.length > 0 && !base.endsWith(' ') ? ' ' : '';
+           return { ...prev, [`part-${cp}`]: base + space + finalTranscript };
+        });
       };
 
       recognition.onerror = (event: any) => {
@@ -211,6 +217,7 @@ export function ExamMode() {
        try {
            setIsRecording(true);
            setInterimTranscript('');
+           sessionBaseAnswerRef.current = answers[`part-${currentPart}`] || '';
            recognitionRef.current.start();
        } catch (err: any) {
            console.error("Speech recognition start error:", err);

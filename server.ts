@@ -2,10 +2,10 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+export const app = express();
+const PORT = process.env.PORT || 3000;
 
+async function setupApp() {
   if (!process.env.GROK_API_KEY) {
     console.error("\n❌ ERROR: GROK_API_KEY is missing from environment variables.");
     console.error("Please add GROK_API_KEY to your .env file before running the application.\n");
@@ -438,10 +438,14 @@ Output ONLY a minified JSON object in the exact structure below. Do not add any 
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
+}
 
+// Ensure the routes are set up synchronously for Vercel
+setupApp();
+
+// Only listen if not running as a Vercel serverless function
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
-
-startServer();
