@@ -136,67 +136,7 @@ export function ExamMode() {
     currentPartRef.current = currentPart;
   }, [currentPart]);
 
-  useEffect(() => {
-    // Initialize Web Speech API
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition && !recognitionRef.current) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
 
-      recognition.onresult = (event: any) => {
-        let newFinal = '';
-        let interim = '';
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const t = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            newFinal += t;
-          } else {
-            interim += t;
-          }
-        }
-
-        if (newFinal) {
-          setAnswers(prev => {
-             const activeKey = examSectionRef.current === 'Speaking' ? `speaking-${speakingIndexRef.current}` : `part-${currentPartRef.current}`;
-             const existing = prev[activeKey] || '';
-             return { ...prev, [activeKey]: existing + newFinal };
-          });
-        }
-        
-        setInterimTranscript(interim);
-      };
-
-      recognition.onerror = (event: any) => {
-        console.error("Speech recognition error", event.error);
-        
-        if (event.error === 'not-allowed') {
-           setMicError("Microphone access is denied. If you are viewing this in a preview iframe, please open the app in a new tab to enable microphone access.");
-        }
-        
-        if (event.error !== 'no-speech') {
-            setIsRecording(false);
-            setInterimTranscript('');
-        }
-      };
-      
-      recognition.onend = () => {
-         setIsRecording(false);
-         setInterimTranscript('');
-      };
-
-      recognitionRef.current = recognition;
-    }
-    
-    // Cleanup
-    return () => {
-      if (recognitionRef.current) {
-         try { recognitionRef.current.stop(); } catch(e){}
-      }
-    };
-  }, []);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -213,18 +153,74 @@ export function ExamMode() {
 
   const toggleRecording = () => {
     setMicError(null);
-    if (!recognitionRef.current) {
-        setMicError("Speech Recognition API is not supported in this browser.");
-        return;
-    }
     
     if (isRecording) {
-       try { recognitionRef.current.stop(); } catch(e){}
+       try { 
+         recognitionRef.current?.stop(); 
+         recognitionRef.current = null;
+       } catch(e){}
        setIsRecording(false);
     } else {
        try {
            setIsRecording(true);
            setInterimTranscript('');
+
+           if (!recognitionRef.current) {
+             const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+             if (!SpeechRecognition) {
+                setMicError("Speech Recognition API is not supported in this browser.");
+                setIsRecording(false);
+                return;
+             }
+
+             const recognition = new SpeechRecognition();
+             recognition.continuous = true;
+             recognition.interimResults = true;
+             recognition.lang = 'en-US';
+
+             recognition.onresult = (event: any) => {
+               let newFinal = '';
+               let interim = '';
+
+               for (let i = event.resultIndex; i < event.results.length; i++) {
+                 const t = event.results[i][0].transcript;
+                 if (event.results[i].isFinal) {
+                   newFinal += t;
+                 } else {
+                   interim += t;
+                 }
+               }
+
+               if (newFinal) {
+                 setAnswers(prev => {
+                    const activeKey = examSectionRef.current === 'Speaking' ? `speaking-${speakingIndexRef.current}` : `part-${currentPartRef.current}`;
+                    const existing = prev[activeKey] || '';
+                    return { ...prev, [activeKey]: existing + newFinal };
+                 });
+               }
+               
+               setInterimTranscript(interim);
+             };
+
+             recognition.onerror = (event: any) => {
+               console.error("Speech recognition error", event.error);
+               if (event.error === 'not-allowed') {
+                  setMicError("Microphone access is denied. If you are viewing this in a preview iframe, please open the app in a new tab to enable microphone access.");
+               }
+               if (event.error !== 'no-speech') {
+                   setIsRecording(false);
+                   setInterimTranscript('');
+               }
+             };
+             
+             recognition.onend = () => {
+                setIsRecording(false);
+                setInterimTranscript('');
+             };
+
+             recognitionRef.current = recognition;
+           }
+
            if (examSection === 'Speaking') {
                sessionBaseAnswerRef.current = answers[`speaking-${speakingIndex}`] || '';
            } else {
