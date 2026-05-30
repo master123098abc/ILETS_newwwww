@@ -147,11 +147,11 @@ export function ExamMode() {
 
       recognition.onresult = (event: any) => {
         let currentInterim = '';
-        let newFinal = '';
+        let finalTranscript = '';
 
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
+        for (let i = 0; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
-             newFinal += event.results[i][0].transcript;
+             finalTranscript += event.results[i][0].transcript;
           } else {
              currentInterim += event.results[i][0].transcript;
           }
@@ -159,21 +159,19 @@ export function ExamMode() {
         
         setInterimTranscript(currentInterim);
         
-        if (newFinal) {
-          setAnswers(prev => {
-             if (examSectionRef.current === 'Speaking') {
-                const si = speakingIndexRef.current;
-                const existing = prev[`speaking-${si}`] || '';
-                const space = existing.length > 0 && !existing.endsWith(' ') ? ' ' : '';
-                return { ...prev, [`speaking-${si}`]: existing + space + newFinal };
-             } else {
-                const cp = currentPartRef.current;
-                const existing = prev[`part-${cp}`] || '';
-                const space = existing.length > 0 && !existing.endsWith(' ') ? ' ' : '';
-                return { ...prev, [`part-${cp}`]: existing + space + newFinal };
-             }
-          });
-        }
+        setAnswers(prev => {
+           const base = sessionBaseAnswerRef.current;
+           const space = base.length > 0 && !base.endsWith(' ') ? ' ' : '';
+           const newText = base + space + finalTranscript;
+           
+           if (examSectionRef.current === 'Speaking') {
+              const si = speakingIndexRef.current;
+              return { ...prev, [`speaking-${si}`]: newText };
+           } else {
+              const cp = currentPartRef.current;
+              return { ...prev, [`part-${cp}`]: newText };
+           }
+        });
       };
 
       recognition.onerror = (event: any) => {
@@ -232,7 +230,11 @@ export function ExamMode() {
        try {
            setIsRecording(true);
            setInterimTranscript('');
-           sessionBaseAnswerRef.current = answers[`part-${currentPart}`] || '';
+           if (examSection === 'Speaking') {
+               sessionBaseAnswerRef.current = answers[`speaking-${speakingIndex}`] || '';
+           } else {
+               sessionBaseAnswerRef.current = answers[`part-${currentPart}`] || '';
+           }
            recognitionRef.current.start();
        } catch (err: any) {
            console.error("Speech recognition start error:", err);
