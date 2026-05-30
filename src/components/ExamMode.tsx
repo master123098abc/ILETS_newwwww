@@ -296,37 +296,51 @@ export function ExamMode() {
     if (!testMode) return;
     setIsGenerating(true);
     setErrorMsg(null);
-    try {
-      const resp = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          testMode: testMode === 'full' ? 'Full Mock Test' : 'Part Test',
-          section: examSection,
-          testType: 'Academic',
-          includePYQs: true,
-          numberOfQuestions: testMode === 'full' ? 40 : 10
-        })
-      });
-      
-      if (!resp.ok) throw new Error("API failed to generate test");
-      
-      const data = await resp.json();
-      setTestData(data);
-      
-      // Set timer dynamically
-      let t = 60 * 60; // Reading & Writing: 60 mins
-      if (examSection === 'Listening') t = 30 * 60;
-      if (examSection === 'Speaking') t = 15 * 60;
-      setTimeLeft(t);
-      
-      setIsGenerating(false);
-      setIsTestActive(true);
-      toggleFullScreen();
-    } catch (err: any) {
-      console.error(err);
-      setErrorMsg(err.message || "Failed to generate test. Check API connection.");
-      setIsGenerating(false);
+    
+    let attempt = 0;
+    const maxRetries = 3;
+    let success = false;
+
+    while (attempt < maxRetries && !success) {
+      try {
+        const resp = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            testMode: testMode === 'full' ? 'Full Mock Test' : 'Part Test',
+            section: examSection,
+            testType: 'Academic',
+            includePYQs: true,
+            numberOfQuestions: testMode === 'full' ? 40 : 10
+          })
+        });
+        
+        if (!resp.ok) throw new Error("API failed to generate test");
+        
+        const data = await resp.json();
+        setTestData(data);
+        
+        // Set timer dynamically
+        let t = 60 * 60; // Reading & Writing: 60 mins
+        if (examSection === 'Listening') t = 30 * 60;
+        if (examSection === 'Speaking') t = 15 * 60;
+        setTimeLeft(t);
+        
+        setIsGenerating(false);
+        setIsTestActive(true);
+        toggleFullScreen();
+        success = true;
+      } catch (err: any) {
+        attempt++;
+        if (attempt < maxRetries) {
+          console.warn(`Fetch failed (attempt ${attempt}/${maxRetries}). Retrying in 1s...`, err);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } else {
+          console.error(err);
+          setErrorMsg(err.message || "Failed to generate test. Check API connection.");
+          setIsGenerating(false);
+        }
+      }
     }
   };
 
