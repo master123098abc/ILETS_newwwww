@@ -143,7 +143,7 @@ export function ExamMode() {
         let currentInterim = '';
         let finalTranscript = '';
 
-        for (let i = 0; i < event.results.length; ++i) {
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
              finalTranscript += event.results[i][0].transcript;
           } else {
@@ -153,12 +153,14 @@ export function ExamMode() {
         
         setInterimTranscript(currentInterim);
         
-        setAnswers(prev => {
-           const cp = currentPartRef.current;
-           const base = sessionBaseAnswerRef.current;
-           const space = base.length > 0 && !base.endsWith(' ') ? ' ' : '';
-           return { ...prev, [`part-${cp}`]: base + space + finalTranscript };
-        });
+        if (finalTranscript) {
+          setAnswers(prev => {
+             const cp = currentPartRef.current;
+             const currentAns = prev[`part-${cp}`] || '';
+             const space = currentAns.length > 0 && !currentAns.endsWith(' ') ? ' ' : '';
+             return { ...prev, [`part-${cp}`]: currentAns + space + finalTranscript };
+          });
+        }
       };
 
       recognition.onerror = (event: any) => {
