@@ -27,6 +27,7 @@ export function ExamMode() {
   
   // Speaking specific state
   const [isRecording, setIsRecording] = useState(false);
+  const isRecordingRef = useRef(false);
   const [interimTranscript, setInterimTranscript] = useState('');
   const [micError, setMicError] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -37,7 +38,6 @@ export function ExamMode() {
 
   useEffect(() => { speakingIndexRef.current = speakingIndex; }, [speakingIndex]);
   useEffect(() => { examSectionRef.current = examSection; }, [examSection]);
-  const sessionBaseAnswerRef = useRef<string>('');
 
   // Listening Audio specific state
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
@@ -159,80 +159,83 @@ export function ExamMode() {
          recognitionRef.current?.stop(); 
          recognitionRef.current = null;
        } catch(e){}
+       isRecordingRef.current = false;
        setIsRecording(false);
     } else {
        try {
            setIsRecording(true);
+           isRecordingRef.current = true;
            setInterimTranscript('');
 
            if (!recognitionRef.current) {
              const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
              if (!SpeechRecognition) {
                 setMicError("Speech Recognition API is not supported in this browser.");
+                isRecordingRef.current = false;
                 setIsRecording(false);
                 return;
              }
 
              const recognition = new SpeechRecognition();
-             recognition.continuous = true;
+             recognition.continuous = false; // MUST be false on Chrome Android
              recognition.interimResults = true;
              recognition.lang = 'en-US';
 
-             recognition.onresult = (event: any) => {
-               let newFinal = '';
-               let interim = '';
+             const activeKey = examSectionRef.current === 'Speaking'
+               ? `speaking-${speakingIndexRef.current}`
+               : `part-${currentPartRef.current}`;
 
-               for (let i = event.resultIndex; i < event.results.length; i++) {
-                 const t = event.results[i][0].transcript;
+             const baseText = answers[activeKey] || '';
+             let sessionText = ''; // local accumulator, NOT in React state
+
+             recognition.onresult = (event: any) => {
+               let interim = '';
+               for (let i = 0; i < event.results.length; i++) {
                  if (event.results[i].isFinal) {
-                   newFinal += t;
+                   sessionText += event.results[i][0].transcript + ' ';
                  } else {
-                   interim += t;
+                   interim = event.results[i][0].transcript;
                  }
                }
-
-               if (newFinal) {
-                 setAnswers(prev => {
-                    const activeKey = examSectionRef.current === 'Speaking' ? `speaking-${speakingIndexRef.current}` : `part-${currentPartRef.current}`;
-                    const existing = prev[activeKey] || '';
-                    return { ...prev, [activeKey]: existing + newFinal };
-                 });
-               }
-               
+               setAnswers(prev => ({
+                 ...prev,
+                 [activeKey]: baseText + sessionText + interim
+               }));
                setInterimTranscript(interim);
              };
 
-             recognition.onerror = (event: any) => {
-               console.error("Speech recognition error", event.error);
-               if (event.error === 'not-allowed') {
-                  setMicError("Microphone access is denied. If you are viewing this in a preview iframe, please open the app in a new tab to enable microphone access.");
-               }
-               if (event.error !== 'no-speech') {
-                   setIsRecording(false);
-                   setInterimTranscript('');
+             recognition.onend = () => {
+               if (isRecordingRef.current) {
+                 // Still holding button — restart silently
+                 try { recognition.start(); } catch(e) {}
+               } else {
+                 recognitionRef.current = null;
+                 isRecordingRef.current = false;
+                 setIsRecording(false);
+                 setInterimTranscript('');
                }
              };
-             
-             recognition.onend = () => {
-                recognitionRef.current = null;
-                setIsRecording(false);
-                setInterimTranscript('');
+
+             recognition.onerror = (event: any) => {
+               if (event.error === 'no-speech') return; // ignore, will restart
+               if (event.error === 'not-allowed') {
+                 setMicError('Microphone access denied.');
+               }
+               isRecordingRef.current = false;
+               setIsRecording(false);
+               recognitionRef.current = null;
              };
 
              recognitionRef.current = recognition;
            }
 
-           if (examSection === 'Speaking') {
-               sessionBaseAnswerRef.current = answers[`speaking-${speakingIndex}`] || '';
-           } else {
-               sessionBaseAnswerRef.current = answers[`part-${currentPart}`] || '';
-           }
            recognitionRef.current.start();
        } catch (err: any) {
            console.error("Speech recognition start error:", err);
            if (err.name === 'InvalidStateError') {
                // Already started, ignore
            } else {
+               isRecordingRef.current = false;
                setIsRecording(false);
            }
        }
