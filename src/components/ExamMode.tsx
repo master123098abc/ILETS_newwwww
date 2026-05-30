@@ -214,6 +214,7 @@ export function ExamMode() {
              };
              
              recognition.onend = () => {
+                recognitionRef.current = null;
                 setIsRecording(false);
                 setInterimTranscript('');
              };
