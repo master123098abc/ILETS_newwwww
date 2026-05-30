@@ -146,27 +146,27 @@ export function ExamMode() {
       recognition.lang = 'en-US';
 
       recognition.onresult = (event: any) => {
-        let interimTranscript = '';
-        let finalTranscript = '';
+        let newFinal = '';
+        let interim = '';
 
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const t = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
+            newFinal += t;
           } else {
-            interimTranscript += event.results[i][0].transcript;
+            interim += t;
           }
         }
-        
-        if (finalTranscript) {
-          sessionBaseAnswerRef.current += finalTranscript;
+
+        if (newFinal) {
+          setAnswers(prev => {
+             const activeKey = examSectionRef.current === 'Speaking' ? `speaking-${speakingIndexRef.current}` : `part-${currentPartRef.current}`;
+             const existing = prev[activeKey] || '';
+             return { ...prev, [activeKey]: existing + newFinal };
+          });
         }
         
-        setInterimTranscript(interimTranscript);
-        
-        setAnswers(prev => {
-           const activeKey = examSectionRef.current === 'Speaking' ? `speaking-${speakingIndexRef.current}` : `part-${currentPartRef.current}`;
-           return { ...prev, [activeKey]: sessionBaseAnswerRef.current + interimTranscript };
-        });
+        setInterimTranscript(interim);
       };
 
       recognition.onerror = (event: any) => {
