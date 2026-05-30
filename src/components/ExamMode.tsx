@@ -146,31 +146,26 @@ export function ExamMode() {
       recognition.lang = 'en-US';
 
       recognition.onresult = (event: any) => {
-        let currentInterim = '';
+        let interimTranscript = '';
         let finalTranscript = '';
 
-        for (let i = 0; i < event.results.length; ++i) {
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
-             finalTranscript += event.results[i][0].transcript;
+            finalTranscript += event.results[i][0].transcript;
           } else {
-             currentInterim += event.results[i][0].transcript;
+            interimTranscript += event.results[i][0].transcript;
           }
         }
         
-        setInterimTranscript(currentInterim);
+        if (finalTranscript) {
+          sessionBaseAnswerRef.current += finalTranscript;
+        }
+        
+        setInterimTranscript(interimTranscript);
         
         setAnswers(prev => {
-           const base = sessionBaseAnswerRef.current;
-           const space = base.length > 0 && !base.endsWith(' ') ? ' ' : '';
-           const newText = base + space + finalTranscript;
-           
-           if (examSectionRef.current === 'Speaking') {
-              const si = speakingIndexRef.current;
-              return { ...prev, [`speaking-${si}`]: newText };
-           } else {
-              const cp = currentPartRef.current;
-              return { ...prev, [`part-${cp}`]: newText };
-           }
+           const activeKey = examSectionRef.current === 'Speaking' ? `speaking-${speakingIndexRef.current}` : `part-${currentPartRef.current}`;
+           return { ...prev, [activeKey]: sessionBaseAnswerRef.current + interimTranscript };
         });
       };
 
