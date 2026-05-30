@@ -53,8 +53,8 @@ export function ResultsDashboard({ examSection, testData, answers, onReview, onG
          originalPrompt = JSON.stringify(testData?.tasks || []);
          userAnswer = JSON.stringify(answers);
       } else if (examSection === 'Speaking') {
-         originalPrompt = JSON.stringify(testData?.parts || []);
-         userAnswer = JSON.stringify(answers);
+         originalPrompt = "Chat History";
+         userAnswer = answers.speaking_history || JSON.stringify(answers);
       }
 
       console.log("Submitting answers:", userAnswer);

@@ -31,6 +31,12 @@ export function ExamMode() {
   const [micError, setMicError] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
   const currentPartRef = useRef<number>(1);
+  const [speakingIndex, setSpeakingIndex] = useState(0);
+  const speakingIndexRef = useRef<number>(0);
+  const examSectionRef = useRef<ExamSection>('Reading');
+
+  useEffect(() => { speakingIndexRef.current = speakingIndex; }, [speakingIndex]);
+  useEffect(() => { examSectionRef.current = examSection; }, [examSection]);
   const sessionBaseAnswerRef = useRef<string>('');
 
   // Listening Audio specific state
@@ -141,11 +147,11 @@ export function ExamMode() {
 
       recognition.onresult = (event: any) => {
         let currentInterim = '';
-        let finalTranscript = '';
+        let newFinal = '';
 
-        for (let i = 0; i < event.results.length; ++i) {
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
-             finalTranscript += event.results[i][0].transcript;
+             newFinal += event.results[i][0].transcript;
           } else {
              currentInterim += event.results[i][0].transcript;
           }
@@ -153,12 +159,21 @@ export function ExamMode() {
         
         setInterimTranscript(currentInterim);
         
-        setAnswers(prev => {
-           const cp = currentPartRef.current;
-           const base = sessionBaseAnswerRef.current;
-           const space = base.length > 0 && !base.endsWith(' ') ? ' ' : '';
-           return { ...prev, [`part-${cp}`]: base + space + finalTranscript };
-        });
+        if (newFinal) {
+          setAnswers(prev => {
+             if (examSectionRef.current === 'Speaking') {
+                const si = speakingIndexRef.current;
+                const existing = prev[`speaking-${si}`] || '';
+                const space = existing.length > 0 && !existing.endsWith(' ') ? ' ' : '';
+                return { ...prev, [`speaking-${si}`]: existing + space + newFinal };
+             } else {
+                const cp = currentPartRef.current;
+                const existing = prev[`part-${cp}`] || '';
+                const space = existing.length > 0 && !existing.endsWith(' ') ? ' ' : '';
+                return { ...prev, [`part-${cp}`]: existing + space + newFinal };
+             }
+          });
+        }
       };
 
       recognition.onerror = (event: any) => {
@@ -253,6 +268,34 @@ export function ExamMode() {
     return { questions: questionsList, parts };
   }, [testData]);
 
+  const speakingQuestions = React.useMemo(() => {
+    if (examSection !== 'Speaking' || !testData?.parts) return [];
+    const qs: { partTitle: string, question: string }[] = [];
+    testData.parts.forEach((part: any) => {
+       if (part.cue_card) {
+          qs.push({
+             partTitle: part.title,
+             question: part.cue_card + (part.bullet_points ? ("\n" + part.bullet_points.join(", ")) : "")
+          });
+       } else if (part.prompts) {
+          part.prompts.forEach((p: string) => qs.push({ partTitle: part.title, question: p }));
+       }
+    });
+    return qs;
+  }, [testData, examSection]);
+
+  useEffect(() => {
+    if (examSection === 'Speaking' && isTestActive && speakingQuestions.length > 0) {
+       const text = speakingQuestions[speakingIndex]?.question;
+       if (text && window.speechSynthesis) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = 'en-US';
+          window.speechSynthesis.speak(utterance);
+       }
+    }
+  }, [speakingIndex, isTestActive, speakingQuestions, examSection]);
+
   // Initialize Timer locally if not from API
   useEffect(() => {
     if (!isTestActive) return;
@@ -346,50 +389,132 @@ export function ExamMode() {
                  {
                    id: 1, title: "The Evolution of Modern Architecture",
                    content: "Architecture has continuously evolved, mirroring the technological advancements and cultural shifts of society. In the early 20th century, the advent of steel and reinforced concrete allowed architects to push the boundaries of height and scale.\n\nFollowing the industrial revolution, the Modernist movement emerged, championed by figures like Le Corbusier and Ludwig Mies van der Rohe. They advocated for functionalism, famously encapsulating their philosophy in the maxim 'form follows function.'\n\nToday, architecture faces a new imperative: sustainability. Contemporary architects are tasked with minimizing the environmental impact of their constructions.",
-                   questions: Array(13).fill(null).map((_, i) => ({
-                     id: i + 1,
-                     type: "fill_in_blank",
-                     prompt: `Based on Passage 1, the introduction of steel allowed architects to push the boundaries of _________ (Question ${i + 1})`,
-                     answer: "height and scale"
-                   }))
+                   questions: [
+                     { id: 1, type: "fill_in_blank", prompt: "The integration of __________ and reinforced concrete redefined building limits.", answer: "steel" },
+                     { id: 2, type: "mcq", prompt: "Who were the champions of the Modernist movement?", options: ["Renaissance artists", "Le Corbusier and Mies van der Rohe", "Victorian builders", "Gothic designers"], answer: "Le Corbusier and Mies van der Rohe" },
+                     { id: 3, type: "fill_in_blank", prompt: "The famous maxim of the Modernist movement is 'form follows __________.'", answer: "function" },
+                     { id: 4, type: "mcq", prompt: "What is the new imperative in contemporary architecture?", options: ["Ornamentation", "Cost reduction", "Sustainability", "Speed of construction"], answer: "Sustainability" },
+                     { id: 5, type: "fill_in_blank", prompt: "Contemporary architects aim to minimize the __________ impact of their buildings.", answer: "environmental" },
+                     { id: 6, type: "mcq", prompt: "When did the Modernist movement primarily emerge?", options: ["Ancient Rome", "Middle Ages", "Following the industrial revolution", "The 21st century"], answer: "Following the industrial revolution" },
+                     { id: 7, type: "fill_in_blank", prompt: "Architecture mirrors __________ advancements of society.", answer: "technological" },
+                     { id: 8, type: "mcq", prompt: "Which material was crucial for pushing the boundaries of scale?", options: ["Wood", "Brick", "Steel", "Glass"], answer: "Steel" },
+                     { id: 9, type: "fill_in_blank", prompt: "Early 20th-century materials allowed to push boundaries of __________ and scale.", answer: "height" },
+                     { id: 10, type: "mcq", prompt: "What philosophy did Le Corbusier advocate?", options: ["Brutalism", "Functionalism", "Post-modernism", "Deconstructivism"], answer: "Functionalism" },
+                     { id: 11, type: "fill_in_blank", prompt: "Architecture evolution mirrors cultural __________ of society.", answer: "shifts" },
+                     { id: 12, type: "mcq", prompt: "Architects today are tasked with:", options: ["Maximizing space", "Minimizing environmental impact", "Building higher", "Using traditional materials"], answer: "Minimizing environmental impact" },
+                     { id: 13, type: "fill_in_blank", prompt: "The advent of steel happened in the early __________ century.", answer: "20th" }
+                   ]
                  },
                  {
                    id: 2, title: "The Deep Sea Exploration",
                    content: "The deep sea remains one of the most unexplored frontiers on Earth. With extreme pressure, freezing temperatures, and total darkness, it presents immense challenges for researchers. Recent advancements in remotely operated vehicles (ROVs) have opened up new possibilities for discovering unique marine species and geological features.",
-                   questions: Array(13).fill(null).map((_, i) => ({
-                     id: i + 14,
-                     type: "mcq",
-                     prompt: `What is the primary challenge mentioned in Passage 2? (Question ${i + 14})`,
-                     options: ["Extreme pressure", "Lack of funding", "Too much light", "Overpopulation of fish"],
-                     answer: "Extreme pressure"
-                   }))
+                   questions: [
+                     { id: 14, type: "mcq", prompt: "What makes the deep sea challenging?", options: ["Extreme pressure", "Lack of funding", "Too much light", "Overpopulation of fish"], answer: "Extreme pressure" },
+                     { id: 15, type: "fill_in_blank", prompt: "Researchers face challenges such as freezing temperatures and total __________.", answer: "darkness" },
+                     { id: 16, type: "mcq", prompt: "What do ROVs stand for?", options: ["Remotely Operated Vehicles", "Robotic Ocean Vessels", "Research Observing Vans", "Rapid Ocean Vehicles"], answer: "Remotely Operated Vehicles" },
+                     { id: 17, type: "fill_in_blank", prompt: "ROVs help in discovering unique marine __________.", answer: "species" },
+                     { id: 18, type: "mcq", prompt: "The deep sea is described as one of the most ________ frontiers on Earth.", options: ["Explored", "Populated", "Unexplored", "Polluted"], answer: "Unexplored" },
+                     { id: 19, type: "fill_in_blank", prompt: "Besides biological discoveries, ROVs find new __________ features.", answer: "geological" },
+                     { id: 20, type: "mcq", prompt: "Which of the following is NOT a challenge of deep sea exploration?", options: ["Freezing temperatures", "High salinity", "Total darkness", "Extreme pressure"], answer: "High salinity" },
+                     { id: 21, type: "fill_in_blank", prompt: "ROVs represent recent __________ in marine technology.", answer: "advancements" },
+                     { id: 22, type: "mcq", prompt: "What does the extreme environment of the deep sea possess?", options: ["Warm water", "Immense challenges", "Abundant vegetation", "Sunlight access"], answer: "Immense challenges" },
+                     { id: 23, type: "fill_in_blank", prompt: "New possibilities refer to discovering new __________ and features.", answer: "species" },
+                     { id: 24, type: "mcq", prompt: "ROVs have opened new _________ for discovery.", options: ["Paths", "Possibilities", "Hazards", "Mysteries"], answer: "Possibilities" },
+                     { id: 25, type: "fill_in_blank", prompt: "The deep sea is a frontier on __________.", answer: "Earth" },
+                     { id: 26, type: "mcq", prompt: "Who are primarily studying the deep sea?", options: ["Tourists", "Researchers", "Fishermen", "Divers"], answer: "Researchers" },
+                     { id: 27, type: "fill_in_blank", prompt: "Extreme ________ is a major hurdle for deep-sea submarines.", answer: "pressure" }
+                   ]
                  },
                  {
                    id: 3, title: "Artificial Intelligence in Education",
                    content: "The integration of AI in education is transforming how students learn and teachers instruct. Adaptive learning platforms can tailor content to individual student needs, providing personalized feedback. However, concerns regarding data privacy and the potential for a digital divide persist.",
-                   questions: Array(14).fill(null).map((_, i) => ({
-                     id: i + 27,
-                     type: "fill_in_blank",
-                     prompt: `According to Passage 3, adaptive platforms provide __________ feedback. (Question ${i + 27})`,
-                     answer: "personalized"
-                   }))
+                   questions: [
+                     { id: 28, type: "fill_in_blank", prompt: "Adaptive learning platforms provide __________ feedback to students.", answer: "personalized" },
+                     { id: 29, type: "mcq", prompt: "What is AI transforming in education?", options: ["School buildings", "How students learn", "Sports teams", "Cafeteria food"], answer: "How students learn" },
+                     { id: 30, type: "fill_in_blank", prompt: "AI can tailor content to individual student __________.", answer: "needs" },
+                     { id: 31, type: "mcq", prompt: "What is a major concern with AI in education?", options: ["Too much homework", "Data privacy", "Teacher shortages", "Slow internet"], answer: "Data privacy" },
+                     { id: 32, type: "fill_in_blank", prompt: "There is a potential for a digital __________ due to AI integration.", answer: "divide" },
+                     { id: 33, type: "mcq", prompt: "What kind of platforms tailor content?", options: ["Social media", "Adaptive learning platforms", "Streaming services", "Gaming platforms"], answer: "Adaptive learning platforms" },
+                     { id: 34, type: "fill_in_blank", prompt: "Integration of AI changes the way teachers __________.", answer: "instruct" },
+                     { id: 35, type: "mcq", prompt: "Personalized feedback is a benefit for:", options: ["Administrators", "Individual students", "Parents", "Software developers"], answer: "Individual students" },
+                     { id: 36, type: "fill_in_blank", prompt: "Concerns regarding data __________ persist.", answer: "privacy" },
+                     { id: 37, type: "mcq", prompt: "The word 'persist' in the passage means:", options: ["To stop", "To continue to exist", "To transform", "To ignore"], answer: "To continue to exist" },
+                     { id: 38, type: "fill_in_blank", prompt: "AI in education is __________ traditional learning methods.", answer: "transforming" },
+                     { id: 39, type: "mcq", prompt: "What does AI tailor?", options: ["Clothing", "Content", "Schedules", "Grading scales"], answer: "Content" },
+                     { id: 40, type: "fill_in_blank", prompt: "A digital divide is a ________ concern of AI.", answer: "potential" }
+                   ]
                  }
                ].slice(0, testMode === 'full' ? 3 : 1)
             };
           } else if (examSection === 'Listening') {
             mockData = {
               section: "Listening",
-              tracks: Array(4).fill(null).map((_, idx) => ({
-                id: idx + 1, title: `Part ${idx + 1} - Mock Audio Section`,
-                transcript: `Good morning! This is Mock Audio Part ${idx + 1}. Because the generation timed out, we are using fallback offline data. This simulates a typical listening test recording.`,
-                questions: Array(10).fill(null).map((_, i) => ({
-                  id: (idx * 10) + i + 1,
-                  type: "mcq",
-                  prompt: `Mock Listening Question ${(idx * 10) + i + 1}`,
-                  options: ["Option A", "Option B", "Option C"],
-                  answer: "Option B"
-                }))
-              })).slice(0, testMode === 'full' ? 4 : 1)
+              tracks: [
+                {
+                  id: 1, title: `Part 1 - Accommodation Inquiry`,
+                  transcript: `Because the generation timed out, we are using fallback offline data. This simulates a typical listening test recording. The student is asking about off-campus housing. The monthly rent is 450 pounds.`,
+                  questions: [
+                    { id: 1, type: "fill_in_blank", prompt: "What is the student calling about?", answer: "housing" },
+                    { id: 2, type: "mcq", prompt: "Where is the housing located?", options: ["On-campus", "Off-campus", "In the city center", "Rural area"], answer: "Off-campus" },
+                    { id: 3, type: "fill_in_blank", prompt: "The monthly rent is ________ pounds.", answer: "450" },
+                    { id: 4, type: "mcq", prompt: "Who is making the inquiry?", options: ["A landlord", "A student", "A real estate agent", "A university official"], answer: "A student" },
+                    { id: 5, type: "fill_in_blank", prompt: "The audio simulates a __________ test recording.", answer: "listening" },
+                    { id: 6, type: "mcq", prompt: "What kind of inquiry is this?", options: ["Flight booking", "Accommodation inquiry", "Job interview", "Doctor appointment"], answer: "Accommodation inquiry" },
+                    { id: 7, type: "fill_in_blank", prompt: "The fallback uses __________ offline data.", answer: "fallback" },
+                    { id: 8, type: "mcq", prompt: "Why is the fallback data used?", options: ["Generation timed out", "User requested it", "No internet", "Testing mode"], answer: "Generation timed out" },
+                    { id: 9, type: "fill_in_blank", prompt: "The typical test _________ is simulated here.", answer: "recording" },
+                    { id: 10, type: "mcq", prompt: "Is the student looking for on-campus housing?", options: ["Yes", "No", "Not mentioned", "Only for summer"], answer: "No" }
+                  ]
+                },
+                {
+                  id: 2, title: `Part 2 - Campus Tour`,
+                  transcript: `Welcome to the campus tour. First, we will visit the grand library, built in 1902. Then we'll walk past the new science block, completed last year. The cafeteria serves meals from 7 AM to 8 PM daily.`,
+                  questions: [
+                    { id: 11, type: "fill_in_blank", prompt: "The first stop on the tour is the grand ________.", answer: "library" },
+                    { id: 12, type: "mcq", prompt: "When was the library built?", options: ["1900", "1902", "1920", "2002"], answer: "1902" },
+                    { id: 13, type: "fill_in_blank", prompt: "The new science block was completed last ________.", answer: "year" },
+                    { id: 14, type: "mcq", prompt: "What time does the cafeteria open?", options: ["6 AM", "7 AM", "8 AM", "9 AM"], answer: "7 AM" },
+                    { id: 15, type: "fill_in_blank", prompt: "The cafeteria serves meals until 8 ________ daily.", answer: "PM" },
+                    { id: 16, type: "mcq", prompt: "What kind of block was recently completed?", options: ["Arts", "Humanities", "Science", "Sports"], answer: "Science" },
+                    { id: 17, type: "fill_in_blank", prompt: "The cafeteria is open __________.", answer: "daily" },
+                    { id: 18, type: "mcq", prompt: "What is the purpose of the audio?", options: ["Lecture", "Campus tour", "Interview", "News report"], answer: "Campus tour" },
+                    { id: 19, type: "fill_in_blank", prompt: "The guide welcomes listeners to the ________ tour.", answer: "campus" },
+                    { id: 20, type: "mcq", prompt: "Is it a newly built library?", options: ["Yes", "No", "It is being built", "Not mentioned"], answer: "No" }
+                  ]
+                },
+                {
+                  id: 3, title: `Part 3 - Research Project Discussion`,
+                  transcript: `John and Mary are discussing their biology project. John suggests studying local bird populations. Mary prefers focusing on water pollution in the nearby river. They decide to ask their professor tomorrow.`,
+                  questions: [
+                    { id: 21, type: "fill_in_blank", prompt: "John and Mary are discussing a ________ project.", answer: "biology" },
+                    { id: 22, type: "mcq", prompt: "What does John suggest studying?", options: ["Plant life", "Bird populations", "Fish species", "Soil quality"], answer: "Bird populations" },
+                    { id: 23, type: "fill_in_blank", prompt: "Mary prefers focusing on water ________.", answer: "pollution" },
+                    { id: 24, type: "mcq", prompt: "Where is the pollution Mary wants to study?", options: ["In the ocean", "In the nearby river", "In lakes", "In groundwater"], answer: "In the nearby river" },
+                    { id: 25, type: "fill_in_blank", prompt: "They decide to ask their ________ for advice.", answer: "professor" },
+                    { id: 26, type: "mcq", prompt: "When will they ask for advice?", options: ["Today", "Tomorrow", "Next week", "After class"], answer: "Tomorrow" },
+                    { id: 27, type: "fill_in_blank", prompt: "John's idea is about ________ bird populations.", answer: "local" },
+                    { id: 28, type: "mcq", prompt: "Who are the two students?", options: ["Tom and Jerry", "John and Mary", "Paul and Sarah", "Mike and Emma"], answer: "John and Mary" },
+                    { id: 29, type: "fill_in_blank", prompt: "They are having a ________ about their project.", answer: "discussion" },
+                    { id: 30, type: "mcq", prompt: "Have they made a final decision on the topic?", options: ["Yes", "No", "They finished the project", "Not mentioned"], answer: "No" }
+                  ]
+                },
+                {
+                  id: 4, title: `Part 4 - Academic Lecture on Climate`,
+                  transcript: `Today's lecture covers the impact of urban heat islands. Cities trap heat due to concrete and asphalt, making them significantly warmer than surrounding rural areas. Planting more trees is one proposed solution.`,
+                  questions: [
+                    { id: 31, type: "fill_in_blank", prompt: "The lecture is about the impact of urban heat ________.", answer: "islands" },
+                    { id: 32, type: "mcq", prompt: "What traps heat in cities?", options: ["Trees and parks", "Concrete and asphalt", "Rivers and lakes", "Cars and buses"], answer: "Concrete and asphalt" },
+                    { id: 33, type: "fill_in_blank", prompt: "Cities are significantly ________ than rural areas.", answer: "warmer" },
+                    { id: 34, type: "mcq", prompt: "What is a proposed solution?", options: ["Building taller", "Painting roofs black", "Planting more trees", "Reducing traffic"], answer: "Planting more trees" },
+                    { id: 35, type: "fill_in_blank", prompt: "The lecture is an ________ presentation.", answer: "academic" },
+                    { id: 36, type: "mcq", prompt: "What kind of areas are cooler?", options: ["Urban areas", "Industrial zones", "Surrounding rural areas", "City centers"], answer: "Surrounding rural areas" },
+                    { id: 37, type: "fill_in_blank", prompt: "Concrete and ________ are common city materials.", answer: "asphalt" },
+                    { id: 38, type: "mcq", prompt: "What does the city trap?", options: ["Water", "Heat", "Cold air", "Wind"], answer: "Heat" },
+                    { id: 39, type: "fill_in_blank", prompt: "One proposed ________ is to plant trees.", answer: "solution" },
+                    { id: 40, type: "mcq", prompt: "What is the main topic?", options: ["Global warming", "Urban heat islands", "Deforestation", "Air quality"], answer: "Urban heat islands" }
+                  ]
+                }
+              ].slice(0, testMode === 'full' ? 4 : 1)
             };
           } else if (examSection === 'Writing') {
             mockData = {
@@ -438,8 +563,23 @@ export function ExamMode() {
   };
 
   const handleSubmit = () => {
+    let finalAnswers = { ...answers };
+    
     // Prevent blank submissions
-    if (examSection === 'Writing' || examSection === 'Speaking') {
+    if (examSection === 'Speaking') {
+      const history = speakingQuestions.map((sq, i) => ({
+         question: sq.question,
+         answer: answers[`speaking-${i}`] || ''
+      }));
+      finalAnswers = { ...answers, speaking_history: JSON.stringify(history) };
+      setAnswers(finalAnswers);
+      
+      const hasAnswer = history.some(item => item.answer && item.answer.trim().length > 0);
+      if (!hasAnswer && timeLeft > 0) {
+         alert("Please provide an answer before submitting!");
+         return;
+      }
+    } else if (examSection === 'Writing') {
       const hasAnswer = (Object.values(answers) as string[]).some(val => val && val.trim().length > 0);
       if (!hasAnswer && timeLeft > 0) {
          alert("Please provide an answer before submitting!");
@@ -572,7 +712,19 @@ export function ExamMode() {
   const maxQuestions = (testMode === 'full' ? 40 : 10);
   
   const handleNext = () => {
-    if (examSection === 'Writing' || examSection === 'Speaking') {
+    if (examSection === 'Speaking') {
+      if (speakingIndex < speakingQuestions.length - 1) {
+         setSpeakingIndex(prev => prev + 1);
+         if (isRecording) {
+            try { recognitionRef.current.stop(); } catch(e){}
+            setIsRecording(false);
+            setInterimTranscript('');
+         }
+      }
+      return;
+    }
+
+    if (examSection === 'Writing') {
       if (currentPart < maxParts) setCurrentPart(prev => prev + 1);
       return;
     }
@@ -593,7 +745,19 @@ export function ExamMode() {
   };
 
   const handlePrev = () => {
-    if (examSection === 'Writing' || examSection === 'Speaking') {
+    if (examSection === 'Speaking') {
+      if (speakingIndex > 0) {
+         setSpeakingIndex(prev => prev - 1);
+         if (isRecording) {
+            try { recognitionRef.current.stop(); } catch(e){}
+            setIsRecording(false);
+            setInterimTranscript('');
+         }
+      }
+      return;
+    }
+
+    if (examSection === 'Writing') {
       if (currentPart > 1) setCurrentPart(prev => prev - 1);
       return;
     }
@@ -989,63 +1153,43 @@ export function ExamMode() {
             <div className="flex-1 flex flex-col items-center p-12 bg-slate-50 overflow-y-auto">
                <div className="max-w-3xl w-full bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
                   <div className="bg-slate-900 p-8 text-center text-white">
-                    <h2 className="text-2xl font-bold tracking-tight">Speaking Part {currentPart}</h2>
-                    <p className="text-slate-400 mt-2">{testData?.parts?.[currentPart - 1]?.title || 'Introduction'}</p>
+                    <h2 className="text-2xl font-bold tracking-tight">{speakingQuestions[speakingIndex]?.partTitle || 'Speaking Part'}</h2>
+                    <p className="text-slate-400 mt-2">Interactive AI Examiner</p>
                   </div>
                   <div className="p-10 space-y-8 text-center">
-                    {testData?.parts?.[currentPart - 1]?.cue_card ? (
-                       <div className="bg-amber-50 p-8 rounded-2xl border border-amber-200 text-left">
-                          <h4 className="font-bold text-amber-900 text-lg mb-4">Cue Card</h4>
-                          <p className="text-slate-800 text-xl font-semibold mb-4">{testData.parts[currentPart - 1].cue_card}</p>
-                          <ul className="list-disc list-inside space-y-2 text-slate-700">
-                             {(testData.parts[currentPart - 1].bullet_points || []).map((pt: string, idx: number) => (
-                               <li key={idx}>{pt}</li>
-                             ))}
-                          </ul>
-                       </div>
-                    ) : (
-                      <div className="space-y-6">
-                        <h4 className="font-bold text-slate-500 uppercase tracking-widest text-sm">Examiner Prompts</h4>
-                        {(testData?.parts?.[currentPart - 1]?.prompts || []).map((pt: string, idx: number) => (
-                          <div key={idx} className="text-slate-800 text-xl font-medium bg-slate-50 p-4 rounded-xl border border-gray-100">
-                            {pt}
-                          </div>
-                        ))}
+                    <div className="space-y-6">
+                      <h4 className="font-bold text-slate-500 uppercase tracking-widest text-sm">Examiner Asks</h4>
+                      <div className="text-slate-800 text-2xl font-medium bg-slate-50 p-6 rounded-xl border border-gray-100 shadow-inner whitespace-pre-wrap">
+                        {speakingQuestions[speakingIndex]?.question}
                       </div>
-                    )}
+                    </div>
 
                     <div className="pt-8 flex flex-col items-center gap-4 border-t border-gray-100">
                       <button 
                         onClick={toggleRecording}
-                        disabled={timeLeft === 0}
-                        className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-lg ${isRecording ? 'bg-red-100 text-red-600 animate-pulse shadow-red-200' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} ${timeLeft === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`flex items-center gap-2 px-8 py-4 rounded-full font-bold shadow-sm transition-all focus:ring-4 focus:ring-opacity-50 ${isRecording ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 focus:ring-rose-200' : 'bg-slate-900 text-white hover:bg-slate-800 focus:ring-slate-300'}`}
                       >
-                         <Mic className="w-8 h-8" />
+                        {isRecording ? <Square className="w-5 h-5 fill-current" /> : <Mic className="w-5 h-5" />}
+                        {isRecording ? 'Stop Recording' : 'Hold & Speak Answer'}
                       </button>
-                      <span className={`font-semibold uppercase tracking-widest text-sm ${isRecording ? 'text-red-500' : 'text-slate-600'}`}>
-                        {isRecording ? '🎙️ Listening... Tap to stop' : 'Tap to Start Speaking'}
-                      </span>
-                      {micError && (
-                         <div className="text-red-500 text-sm mt-2 px-4 text-center max-w-lg bg-red-50 border border-red-100 py-2 rounded-md">
-                            {micError}
-                         </div>
-                      )}
+                      {micError && <p className="text-rose-500 text-sm">{micError}</p>}
                       
-                      <div className="w-full relative mt-4">
-                         <textarea
-                           value={answers[`part-${currentPart}`] || ''}
-                           onChange={(e) => handleAnswerChange(`part-${currentPart}`, e.target.value)}
-                           disabled={timeLeft === 0}
-                           placeholder="Type your answer or use the microphone to dictate..."
-                           className={`w-full h-40 p-5 border border-gray-200 rounded-xl resize-none outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 custom-scrollbar text-slate-700 leading-relaxed ${timeLeft === 0 ? 'bg-gray-50 opacity-50 cursor-not-allowed' : ''}`}
-                         />
-                         {isRecording && interimTranscript && (
-                           <div className="absolute bottom-6 left-5 right-5 text-left pointer-events-none overflow-hidden text-ellipsis whitespace-nowrap">
+                      <div className="w-full relative mt-4 text-left">
+                          <p className="text-slate-500 text-sm mb-2 font-medium">Your Transcribed Answer:</p>
+                          <textarea
+                            value={answers[`speaking-${speakingIndex}`] || ''}
+                            onChange={(e) => handleAnswerChange(`speaking-${speakingIndex}`, e.target.value)}
+                            disabled={timeLeft === 0}
+                            placeholder="Your spoken answer will appear here..."
+                            className={`w-full h-40 p-5 border border-gray-200 rounded-xl resize-none outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 custom-scrollbar text-slate-700 leading-relaxed ${timeLeft === 0 ? 'bg-gray-50 opacity-50 cursor-not-allowed' : ''}`}
+                          />
+                          {isRecording && interimTranscript && (
+                            <div className="absolute bottom-6 left-5 right-5 text-left pointer-events-none overflow-hidden text-ellipsis whitespace-nowrap">
                               <span className="bg-white/90 backdrop-blur-sm text-slate-500 italic px-2 py-1 rounded shadow-sm border border-slate-100 text-sm">
                                 ... {interimTranscript}
                               </span>
-                           </div>
-                         )}
+                            </div>
+                          )}
                       </div>
                     </div>
                   </div>
@@ -1081,7 +1225,7 @@ export function ExamMode() {
             <button 
               onClick={handlePrev}
               disabled={
-                (examSection === 'Writing' || examSection === 'Speaking') ? currentPart === 1 : (activeQuestion === 1 && (testMode === 'full' || currentPart === 1))
+                examSection === 'Speaking' ? speakingIndex === 0 : (examSection === 'Writing' ? currentPart === 1 : (activeQuestion === 1 && (testMode === 'full' || currentPart === 1)))
               }
               className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-gray-200 font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
@@ -1159,7 +1303,7 @@ export function ExamMode() {
             <button 
               onClick={handleNext}
               disabled={
-                (examSection === 'Writing' || examSection === 'Speaking') ? currentPart === maxParts : (activeQuestion === maxQuestions && (testMode === 'full' || currentPart === maxParts))
+                examSection === 'Speaking' ? speakingIndex === speakingQuestions.length - 1 : (examSection === 'Writing' ? currentPart === maxParts : (activeQuestion === maxQuestions && (testMode === 'full' || currentPart === maxParts)))
               }
               className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-gray-200 font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
