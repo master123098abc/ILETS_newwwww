@@ -449,3 +449,5 @@ if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
+
+export default app;

@@ -1,5 +1,3 @@
-import { app } from '../server';
-
-export const maxDuration = 60;
+import app from '../server';
 
 export default app;
